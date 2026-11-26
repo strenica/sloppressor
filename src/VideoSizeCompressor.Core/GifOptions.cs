@@ -4,10 +4,10 @@ public sealed record GifOptions
 {
     public required string InputPath { get; init; }
     public string? OutputPath { get; init; }
-    public int Width { get; init; } = 480;
-    public int FramesPerSecond { get; init; } = 12;
+    public int Width { get; init; } = 720;
+    public int FramesPerSecond { get; init; } = 15;
     public decimal StartSeconds { get; init; }
-    public decimal? DurationSeconds { get; init; } = 10m;
+    public decimal? DurationSeconds { get; init; }
     public string? FFmpegDirectory { get; init; }
 
     public void Validate()

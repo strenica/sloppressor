@@ -45,9 +45,13 @@ internal static class Program
             if (command.Command == "home") Application.Run(new StartForm(settings));
             else if (command.Command == "gif" && command.Gif is { } gif)
             {
-                using var dialog = new GifOptionsDialog(gif);
-                if (dialog.ShowDialog() != DialogResult.OK) return 130;
-                using var form = new GifProgressForm(dialog.Options);
+                if (!command.NoDialog)
+                {
+                    using var dialog = new GifOptionsDialog(gif);
+                    if (dialog.ShowDialog() != DialogResult.OK) return 130;
+                    gif = dialog.Options;
+                }
+                using var form = new GifProgressForm(gif);
                 Application.Run(form);
                 return form.ExitCode;
             }

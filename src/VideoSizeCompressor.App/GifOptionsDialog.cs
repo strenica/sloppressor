@@ -27,7 +27,7 @@ internal sealed class GifOptionsDialog : Form
         var file = Ui.Label(Path.GetFileName(initial.InputPath), 10);
         file.AutoEllipsis = true; file.AutoSize = false;
         Ui.Add(panel, file, 30);
-        Ui.Add(panel, Ui.Label("The original video is never changed. GIF files can be large, so a short clip is a good start."), 9);
+        Ui.Add(panel, Ui.Label("The original video is never changed. A shorter clip or lower width keeps the GIF smaller."), 9);
 
         var fields = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 0, Margin = Padding.Empty };
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));

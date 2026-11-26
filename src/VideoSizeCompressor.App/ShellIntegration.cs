@@ -27,7 +27,19 @@ internal static class ShellIntegration
                     verbs.DeleteSubKeyTree(name, throwOnMissingSubKey: false);
             AddVerb(menu, "01_20MB", "Compress to 20 MB", $"\"{executable}\" compress \"%1\" --size 20");
             AddVerb(menu, "02_8MB", "Compress to 8 MB", $"\"{executable}\" compress \"%1\" --size 8");
-            AddVerb(menu, "03_GIF", "Convert to GIF...", $"\"{executable}\" gif \"%1\"");
+            using (RegistryKey gif = menu.CreateSubKey(@"shell\03_GIF"))
+            {
+                gif.SetValue("MUIVerb", "Convert to GIF");
+                gif.SetValue("SubCommands", "");
+                gif.SetValue("MultiSelectModel", "Single");
+                // Older releases had a command directly on this key. A submenu
+                // must not keep it, or Explorer may still launch the dialog.
+                gif.DeleteSubKeyTree("command", throwOnMissingSubKey: false);
+                AddVerb(gif, "01_High", "High quality (whole video)", $"\"{executable}\" gif \"%1\" --quality high --whole --no-dialog");
+                AddVerb(gif, "02_Balanced", "Balanced (whole video)", $"\"{executable}\" gif \"%1\" --quality balanced --whole --no-dialog");
+                AddVerb(gif, "03_Small", "Small file (whole video)", $"\"{executable}\" gif \"%1\" --quality small --whole --no-dialog");
+                AddVerb(gif, "04_Custom", "Custom...", $"\"{executable}\" gif \"%1\"");
+            }
             AddVerb(menu, "04_Custom", "Custom Size...", $"\"{executable}\" custom \"%1\"");
         }
         NotifyExplorer();

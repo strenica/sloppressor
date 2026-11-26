@@ -4,7 +4,7 @@ using VideoSizeCompressor.Core;
 namespace VideoSizeCompressor.Commands;
 
 public sealed record ParsedCommand(string Command, CompressionOptions? Options = null,
-    bool NoUi = false, bool Silent = false, GifOptions? Gif = null);
+    bool NoUi = false, bool Silent = false, GifOptions? Gif = null, bool NoDialog = false);
 
 public static class CommandLine
 {
@@ -13,12 +13,12 @@ public static class CommandLine
 
         VideoSizeCompressor.exe compress "C:\video.mp4" --size 20
         VideoSizeCompressor.exe custom "C:\video.mp4"
-        VideoSizeCompressor.exe gif "C:\video.mp4"
-        VideoSizeCompressor.Cli.exe gif "C:\video.mp4" --start 5 --duration 3 --width 640
+        VideoSizeCompressor.exe gif "C:\video.mp4" --whole
+        VideoSizeCompressor.Cli.exe gif "C:\video.mp4" --quality high --start 5 --duration 3
 
         compress <file> --size <MB>  Compress the complete video to MP4.
         custom <file>               Ask for the maximum size (Windows app only).
-        gif <file>                  Convert a clip to a looping GIF.
+        gif <file>                  Make a looping GIF; high quality and the whole video by default.
         register | unregister       Install/remove per-user Explorer entries (app only).
 
         --codec hevc|h264           Default: hevc / libx265.
@@ -28,11 +28,13 @@ public static class CommandLine
         --retries <0..5>            Additional attempts if oversized. Default: 3.
         --preset <name>            Default: medium (also fast, slow, etc.).
         --threads <1..64>           Default: available CPU threads minus one, capped at 16.
-        --width <64..1920>          GIF width. Default: 480.
-        --fps <1..30>               GIF frames per second. Default: 12.
+        --quality high|balanced|small  GIF preset: 720/15, 480/12, 360/10. Default: high.
+        --width <64..1920>          GIF width; overrides the quality preset.
+        --fps <1..30>               GIF frames per second; overrides the quality preset.
         --start <seconds>           GIF clip start. Default: 0.
-        --duration <seconds>        GIF clip length. Default: 10.
-        --whole                     GIF uses everything from --start to the end.
+        --duration <seconds>        GIF clip length. Default: the whole video.
+        --whole                     GIF uses everything from --start to the end (the default).
+        --no-dialog                 Skip the GIF options dialog (app only).
         --ffmpeg-dir <directory>    Folder containing ffmpeg and ffprobe (or a bin subfolder).
         --no-ui                    Run without dialogs; use the CLI exe for scripts.
         --help                     Show this help.
@@ -57,14 +59,19 @@ public static class CommandLine
         if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1])) throw new CompressionException("Provide a video filename after the command.");
         bool isGif = command == "gif";
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        bool noUi = false, whole = false;
+        bool noUi = false, noDialog = false, whole = false;
         string[] valid = isGif
-            ? ["--width", "--fps", "--start", "--duration", "--output", "--ffmpeg-dir"]
+            ? ["--quality", "--width", "--fps", "--start", "--duration", "--output", "--ffmpeg-dir"]
             : ["--size", "--codec", "--output", "--audio-bitrate", "--safety-margin", "--retries", "--preset", "--threads", "--ffmpeg-dir"];
         for (int i = 2; i < args.Length; i++)
         {
             string option = args[i];
             if (option == "--no-ui") { noUi = true; continue; }
+            if (option == "--no-dialog")
+            {
+                if (!isGif) throw new CompressionException("Unknown option: --no-dialog");
+                noDialog = true; continue;
+            }
             if (option == "--whole")
             {
                 if (!isGif) throw new CompressionException("Unknown option: --whole");
@@ -80,18 +87,20 @@ public static class CommandLine
         {
             if (whole && values.ContainsKey("--duration"))
                 throw new CompressionException("Use either --duration or --whole, not both.");
+            string quality = values.GetValueOrDefault("--quality", "high").ToLowerInvariant();
+            (int presetWidth, int presetFps) = GifPreset(quality);
             var gif = new GifOptions
             {
                 InputPath = args[1],
                 OutputPath = values.GetValueOrDefault("--output"),
-                Width = values.TryGetValue("--width", out string? width) ? Integer(width, "width") : 480,
-                FramesPerSecond = values.TryGetValue("--fps", out string? fps) ? Integer(fps, "frames per second") : 12,
+                Width = values.TryGetValue("--width", out string? width) ? Integer(width, "width") : presetWidth,
+                FramesPerSecond = values.TryGetValue("--fps", out string? fps) ? Integer(fps, "frames per second") : presetFps,
                 StartSeconds = values.TryGetValue("--start", out string? start) ? Decimal(start, "start time") : 0m,
-                DurationSeconds = whole ? null : values.TryGetValue("--duration", out string? duration) ? Decimal(duration, "duration") : 10m,
+                DurationSeconds = whole ? null : values.TryGetValue("--duration", out string? duration) ? Decimal(duration, "duration") : null,
                 FFmpegDirectory = values.TryGetValue("--ffmpeg-dir", out string? gifFfmpeg) ? gifFfmpeg : defaults.FFmpegDirectory
             };
             gif.Validate();
-            return new(command, Gif: gif, NoUi: noUi);
+            return new(command, Gif: gif, NoUi: noUi, NoDialog: noDialog);
         }
         if (command == "compress" && !values.ContainsKey("--size")) throw new CompressionException("Specify the maximum size, for example --size 20.");
         if (command == "custom" && (noUi || values.ContainsKey("--size"))) throw new CompressionException("Custom opens a size dialog. For automation, use compress with --size instead.");
@@ -115,4 +124,12 @@ public static class CommandLine
             ? result : throw new CompressionException($"Invalid {name}. Use a number with a decimal point, such as 7.5.");
     private static int Integer(string value, string name) => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int result)
         ? result : throw new CompressionException($"Invalid {name}. Use a whole number.");
+
+    private static (int Width, int FramesPerSecond) GifPreset(string quality) => quality switch
+    {
+        "high" => (720, 15),
+        "balanced" => (480, 12),
+        "small" => (360, 10),
+        _ => throw new CompressionException($"Unknown GIF quality '{quality}'. Choose high, balanced, or small.")
+    };
 }

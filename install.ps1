@@ -100,7 +100,7 @@ if (-not $NoRegister) {
 }
 
 Write-Host "Installed: $Target"
-Write-Host 'Menu: Compress to 20 MB, Compress to 8 MB, Convert to GIF..., Custom Size...'
+Write-Host 'Menu: Compress to 20 MB, Compress to 8 MB, Convert to GIF (High/Balanced/Small/Custom), Custom Size...'
 if ($NoRegister) {
     Write-Host 'Explorer registration skipped (-NoRegister).'
 } else {
