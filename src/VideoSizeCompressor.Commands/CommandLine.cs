@@ -3,7 +3,8 @@ using VideoSizeCompressor.Core;
 
 namespace VideoSizeCompressor.Commands;
 
-public sealed record ParsedCommand(string Command, CompressionOptions? Options = null, bool NoUi = false, bool Silent = false);
+public sealed record ParsedCommand(string Command, CompressionOptions? Options = null,
+    bool NoUi = false, bool Silent = false, GifOptions? Gif = null);
 
 public static class CommandLine
 {
@@ -12,21 +13,28 @@ public static class CommandLine
 
         VideoSizeCompressor.exe compress "C:\video.mp4" --size 20
         VideoSizeCompressor.exe custom "C:\video.mp4"
-        VideoSizeCompressor.Cli.exe compress "C:\video.mp4" --size 8
+        VideoSizeCompressor.exe gif "C:\video.mp4"
+        VideoSizeCompressor.Cli.exe gif "C:\video.mp4" --start 5 --duration 3 --width 640
 
         compress <file> --size <MB>  Compress the complete video to MP4.
         custom <file>               Ask for the maximum size (Windows app only).
+        gif <file>                  Convert a clip to a looping GIF.
         register | unregister       Install/remove per-user Explorer entries (app only).
 
         --codec hevc|h264           Default: hevc / libx265.
-        --output <new.mp4>          Existing files are never overwritten.
+        --output <new file>         Existing files are never overwritten.
         --audio-bitrate <kbps>      Audio ceiling, 8–320; automatically reduced if needed.
         --safety-margin <percent>   Default: 2.5; valid range 0.5–25.
         --retries <0..5>            Additional attempts if oversized. Default: 3.
         --preset <name>            Default: medium (also fast, slow, etc.).
         --threads <1..64>           Default: available CPU threads minus one, capped at 16.
+        --width <64..1920>          GIF width. Default: 480.
+        --fps <1..30>               GIF frames per second. Default: 12.
+        --start <seconds>           GIF clip start. Default: 0.
+        --duration <seconds>        GIF clip length. Default: 10.
+        --whole                     GIF uses everything from --start to the end.
         --ffmpeg-dir <directory>    Folder containing ffmpeg and ffprobe (or a bin subfolder).
-        --no-ui                    Run compression without dialogs; use the CLI exe for scripts.
+        --no-ui                    Run without dialogs; use the CLI exe for scripts.
         --help                     Show this help.
 
         CLI numbers use a dot for decimals: --size 7.5
@@ -45,23 +53,48 @@ public static class CommandLine
             if (args.Skip(1).Any(a => a != "--silent")) throw new CompressionException("Registration accepts only the optional --silent flag.");
             return new(command, Silent: args.Contains("--silent"));
         }
-        if (command is not ("compress" or "custom")) throw new CompressionException("Unknown command. Use --help for examples.");
+        if (command is not ("compress" or "custom" or "gif")) throw new CompressionException("Unknown command. Use --help for examples.");
         if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1])) throw new CompressionException("Provide a video filename after the command.");
+        bool isGif = command == "gif";
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        bool noUi = false;
-        string[] valid = ["--size", "--codec", "--output", "--audio-bitrate", "--safety-margin", "--retries", "--preset", "--threads", "--ffmpeg-dir"];
+        bool noUi = false, whole = false;
+        string[] valid = isGif
+            ? ["--width", "--fps", "--start", "--duration", "--output", "--ffmpeg-dir"]
+            : ["--size", "--codec", "--output", "--audio-bitrate", "--safety-margin", "--retries", "--preset", "--threads", "--ffmpeg-dir"];
         for (int i = 2; i < args.Length; i++)
         {
             string option = args[i];
             if (option == "--no-ui") { noUi = true; continue; }
+            if (option == "--whole")
+            {
+                if (!isGif) throw new CompressionException("Unknown option: --whole");
+                whole = true; continue;
+            }
             if (option == "--help") return new("help");
             if (!valid.Contains(option)) throw new CompressionException($"Unknown option: {option}");
             if (++i >= args.Length) throw new CompressionException($"Missing value for {option}.");
             if (!values.TryAdd(option, args[i])) throw new CompressionException($"Option {option} was specified more than once.");
         }
+        var defaults = settings ?? new UserSettings();
+        if (isGif)
+        {
+            if (whole && values.ContainsKey("--duration"))
+                throw new CompressionException("Use either --duration or --whole, not both.");
+            var gif = new GifOptions
+            {
+                InputPath = args[1],
+                OutputPath = values.GetValueOrDefault("--output"),
+                Width = values.TryGetValue("--width", out string? width) ? Integer(width, "width") : 480,
+                FramesPerSecond = values.TryGetValue("--fps", out string? fps) ? Integer(fps, "frames per second") : 12,
+                StartSeconds = values.TryGetValue("--start", out string? start) ? Decimal(start, "start time") : 0m,
+                DurationSeconds = whole ? null : values.TryGetValue("--duration", out string? duration) ? Decimal(duration, "duration") : 10m,
+                FFmpegDirectory = values.TryGetValue("--ffmpeg-dir", out string? gifFfmpeg) ? gifFfmpeg : defaults.FFmpegDirectory
+            };
+            gif.Validate();
+            return new(command, Gif: gif, NoUi: noUi);
+        }
         if (command == "compress" && !values.ContainsKey("--size")) throw new CompressionException("Specify the maximum size, for example --size 20.");
         if (command == "custom" && (noUi || values.ContainsKey("--size"))) throw new CompressionException("Custom opens a size dialog. For automation, use compress with --size instead.");
-        var defaults = settings ?? new UserSettings();
         var options = defaults.OptionsFor(args[1], values.TryGetValue("--size", out string? size) ? Decimal(size, "size") : 20m) with
         {
             Codec = values.GetValueOrDefault("--codec", defaults.Codec).ToLowerInvariant(),

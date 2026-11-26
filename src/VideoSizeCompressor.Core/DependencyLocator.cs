@@ -36,7 +36,13 @@ public static class DependencyLocator
         return File.Exists(ffmpeg) && File.Exists(ffprobe) ? new(Path.GetFullPath(ffmpeg), Path.GetFullPath(ffprobe)) : null;
     }
 
-    public static async Task VerifyAsync(ToolPaths paths, IVideoCodec codec, IProcessRunner runner, JobLog log, CancellationToken token)
+    public static Task VerifyAsync(ToolPaths paths, IVideoCodec codec, IProcessRunner runner, JobLog log, CancellationToken token) =>
+        VerifyEncodersAsync(paths, [codec.Encoder, "aac"], runner, log, token);
+
+    public static Task VerifyGifAsync(ToolPaths paths, IProcessRunner runner, JobLog log, CancellationToken token) =>
+        VerifyEncodersAsync(paths, ["gif"], runner, log, token);
+
+    private static async Task VerifyEncodersAsync(ToolPaths paths, string[] encoders, IProcessRunner runner, JobLog log, CancellationToken token)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
@@ -44,9 +50,9 @@ public static class DependencyLocator
         {
             var result = await runner.RunAsync(new(paths.FFmpeg, ["-hide_banner", "-encoders"], Path.GetTempPath(), CaptureOutput: true), log, null, timeout.Token);
             if (result.ExitCode != 0) throw new CompressionException("FFmpeg could not list its encoders. Check that the FFmpeg installation is complete.");
-            foreach (string encoder in new[] { codec.Encoder, "aac" })
+            foreach (string encoder in encoders)
                 if (!Regex.IsMatch(result.StandardOutput, @"(?m)^\s*[A-Z.]{6}\s+" + Regex.Escape(encoder) + @"\s"))
-                    throw new CompressionException($"This FFmpeg build does not include {encoder}. Install a compatible GPL-enabled FFmpeg build, or choose another supported codec.");
+                    throw new CompressionException($"This FFmpeg build does not include {encoder}. Install a complete FFmpeg build, or choose another supported codec.");
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         { throw new CompressionException("FFmpeg took too long to start. Check the installation and antivirus activity."); }

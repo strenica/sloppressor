@@ -20,9 +20,15 @@ internal static class ShellIntegration
             menu.SetValue("Icon", $"\"{executable}\",0");
             menu.SetValue("SubCommands", "");
             menu.SetValue("MultiSelectModel", "Single");
+            // Remove verb keys from earlier releases so a renamed or removed item
+            // never survives as a duplicate in the current menu.
+            using (RegistryKey verbs = menu.CreateSubKey("shell"))
+                foreach (string name in verbs.GetSubKeyNames())
+                    verbs.DeleteSubKeyTree(name, throwOnMissingSubKey: false);
             AddVerb(menu, "01_20MB", "Compress to 20 MB", $"\"{executable}\" compress \"%1\" --size 20");
             AddVerb(menu, "02_8MB", "Compress to 8 MB", $"\"{executable}\" compress \"%1\" --size 8");
-            AddVerb(menu, "03_Custom", "Custom Size...", $"\"{executable}\" custom \"%1\"");
+            AddVerb(menu, "03_GIF", "Convert to GIF...", $"\"{executable}\" gif \"%1\"");
+            AddVerb(menu, "04_Custom", "Custom Size...", $"\"{executable}\" custom \"%1\"");
         }
         NotifyExplorer();
     }

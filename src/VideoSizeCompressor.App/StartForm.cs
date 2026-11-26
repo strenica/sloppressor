@@ -54,7 +54,7 @@ internal sealed class StartForm : Form
         };
         Ui.Add(panel, Ui.Buttons(ffmpeg));
         Ui.Add(panel, download);
-        Ui.Add(panel, Ui.Label("Explorer: right-click a video → Compress Video.\nWindows 11: first select Show more options.", 9));
+        Ui.Add(panel, Ui.Label("Explorer: right-click a video → Compress Video (or Convert to GIF).\nWindows 11: first select Show more options.", 9));
         Controls.Add(panel);
         AcceptButton = choose;
         RefreshDependency();

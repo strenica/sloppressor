@@ -22,7 +22,7 @@ internal static class Program
                 Console.SetError(new StreamWriter(Console.OpenStandardError()) { AutoFlush = true });
             }
             // Unregistration and help work even if the preference file is damaged.
-            UserSettings settings = args.Length == 0 || args[0] is "compress" or "custom" ? UserSettings.Load() : new();
+            UserSettings settings = args.Length == 0 || args[0] is "compress" or "custom" or "gif" ? UserSettings.Load() : new();
             ParsedCommand command = CommandLine.Parse(args, settings);
             if (command.NoUi || command.Command is "help" or "version")
             {
@@ -43,6 +43,14 @@ internal static class Program
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => MessageBox.Show(e.Exception.Message, "VideoSizeCompressor", MessageBoxButtons.OK, MessageBoxIcon.Error);
             if (command.Command == "home") Application.Run(new StartForm(settings));
+            else if (command.Command == "gif" && command.Gif is { } gif)
+            {
+                using var dialog = new GifOptionsDialog(gif);
+                if (dialog.ShowDialog() != DialogResult.OK) return 130;
+                using var form = new GifProgressForm(dialog.Options);
+                Application.Run(form);
+                return form.ExitCode;
+            }
             else if (command.Options is { } options)
             {
                 if (command.Command == "custom")

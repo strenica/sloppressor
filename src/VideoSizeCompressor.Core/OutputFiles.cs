@@ -22,12 +22,31 @@ public static class OutputFiles
         return destination;
     }
 
+    public static string ValidateGifDestination(GifOptions options, string input)
+    {
+        string destination = options.OutputPath is null
+            ? Path.GetDirectoryName(input)!
+            : Path.GetDirectoryName(Path.GetFullPath(options.OutputPath))!;
+        if (!Directory.Exists(destination)) throw new CompressionException("The output folder does not exist. Choose an existing folder.");
+        if (options.OutputPath is not null)
+        {
+            string output = Path.GetFullPath(options.OutputPath);
+            if (!Path.GetExtension(output).Equals(".gif", StringComparison.OrdinalIgnoreCase))
+                throw new CompressionException("The output filename must end in .gif.");
+            if (PathsEqual(input, output)) throw new CompressionException("The output path is the original file. Choose a different filename.");
+            if (Path.Exists(output)) throw new CompressionException("The requested output already exists. Choose a new filename; existing files are never overwritten.");
+        }
+        return destination;
+    }
+
     public static bool PathsEqual(string left, string right) => string.Equals(Path.GetFullPath(left), Path.GetFullPath(right),
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    public static string CreateStagingFile(string directory)
+    public static string CreateStagingFile(string directory, string extension = ".mp4")
     {
-        string staging = Path.Combine(directory, $".vsc-{Guid.NewGuid():N}.partial.mp4");
+        if (extension.Length < 2 || !extension.StartsWith('.') || extension.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new ArgumentException("A file extension such as .mp4 is required.", nameof(extension));
+        string staging = Path.Combine(directory, $".vsc-{Guid.NewGuid():N}.partial{extension}");
         // Fail early for read-only directories and reserve this job's unique file.
         using (new FileStream(staging, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
         return staging;
@@ -35,16 +54,27 @@ public static class OutputFiles
 
     public static string Candidate(string input, string sizeLabel, int sequence)
     {
+        string number = sequence == 1 ? "" : $"_{sequence}";
+        return Path.Combine(Path.GetDirectoryName(input)!, $"{SafeStem(input)}_{sizeLabel}MB{number}.mp4");
+    }
+
+    public static string GifCandidate(string input, int sequence)
+    {
+        string number = sequence == 1 ? "" : $"_{sequence}";
+        return Path.Combine(Path.GetDirectoryName(input)!, $"{SafeStem(input)}{number}.gif");
+    }
+
+    private static string SafeStem(string input)
+    {
         string stem = Path.GetFileNameWithoutExtension(input);
-        // Leave room under NTFS's component limit for size, collision suffix and .mp4.
+        // Leave room under NTFS's component limit for a suffix and extension.
         // Do not split a UTF-16 surrogate pair in a long Unicode filename.
         if (stem.Length > 180)
         {
             int length = char.IsHighSurrogate(stem[179]) ? 179 : 180;
             stem = stem[..length];
         }
-        string number = sequence == 1 ? "" : $"_{sequence}";
-        return Path.Combine(Path.GetDirectoryName(input)!, $"{stem}_{sizeLabel}MB{number}.mp4");
+        return stem;
     }
 
     public static string CommitVerified(string staging, string input, CompressionOptions options)
@@ -72,6 +102,29 @@ public static class OutputFiles
             catch (IOException) when (Path.Exists(candidate)) { }
         }
         throw new CompressionException("Too many output files use this name. Choose an explicit output filename.");
+    }
+
+    public static string CommitGif(string staging, string input, GifOptions options)
+    {
+        if (!File.Exists(staging) || new FileInfo(staging).Length <= 0)
+            throw new CompressionException("Output failed the GIF check. No final file was created.");
+        if (options.OutputPath is not null)
+        {
+            string output = Path.GetFullPath(options.OutputPath);
+            MoveNoReplace(staging, output);
+            return output;
+        }
+        for (int sequence = 1; sequence <= 100_000; sequence++)
+        {
+            string candidate = GifCandidate(input, sequence);
+            try
+            {
+                MoveNoReplace(staging, candidate);
+                return candidate;
+            }
+            catch (IOException) when (Path.Exists(candidate)) { }
+        }
+        throw new CompressionException("Too many GIF files use this name. Choose an explicit output filename.");
     }
 
     private static void MoveNoReplace(string source, string destination)
